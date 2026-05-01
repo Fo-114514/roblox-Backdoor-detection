@@ -1,0 +1,6 @@
+happy hub:  require(88812096580830):Hload("name")
+Sensation:   require(100263845596551)("name")
+Change the siren head:   require(75834950186546).MorphMonster("name", "sirenhead2")
+k00pkidd:  require(14829670677).EDITL0L("name")
+c00lkidd:   require(14125553864):Fire("name", "c00lkidd")
+bluudude:  require(74432860446268).bluudude("name")
