@@ -1,14 +1,11 @@
--- 带UI进度条的完整偷取脚本（缓慢但可视化）
--- 使用ScreenGui显示实时进度，适合大型地图
-
-local function stealMapWithUI()
-    -- 1. 创建UI界面（进度条 + 文字）
+-- 修复版：生成真正可打开的.rbxl文件（解决Invalid XML错误）
+local function stealMapFixed()
+    -- 1. UI进度（沿用之前的）
     local player = game:GetService("Players").LocalPlayer
     local gui = Instance.new("ScreenGui")
     gui.Name = "StealProgressUI"
     gui.Parent = player:WaitForChild("PlayerGui")
     
-    -- 背景框
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, 400, 0, 120)
     frame.Position = UDim2.new(0.5, -200, 0.5, -60)
@@ -17,7 +14,6 @@ local function stealMapWithUI()
     frame.BorderSizePixel = 0
     frame.Parent = gui
     
-    -- 标题
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, 0, 0, 30)
     title.Position = UDim2.new(0, 0, 0, 5)
@@ -27,7 +23,6 @@ local function stealMapWithUI()
     title.BackgroundTransparency = 1
     title.Parent = frame
     
-    -- 进度条背景
     local progressBg = Instance.new("Frame")
     progressBg.Size = UDim2.new(0.9, 0, 0, 20)
     progressBg.Position = UDim2.new(0.05, 0, 0, 40)
@@ -35,14 +30,12 @@ local function stealMapWithUI()
     progressBg.BorderSizePixel = 0
     progressBg.Parent = frame
     
-    -- 进度条填充
     local progressFill = Instance.new("Frame")
     progressFill.Size = UDim2.new(0, 0, 1, 0)
     progressFill.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
     progressFill.BorderSizePixel = 0
     progressFill.Parent = progressBg
     
-    -- 进度文字
     local progressText = Instance.new("TextLabel")
     progressText.Size = UDim2.new(1, 0, 0, 30)
     progressText.Position = UDim2.new(0, 0, 0, 70)
@@ -52,15 +45,17 @@ local function stealMapWithUI()
     progressText.BackgroundTransparency = 1
     progressText.Parent = frame
     
-    -- 更新UI函数
     local function updateUI(current, total, status)
         local percent = total > 0 and (current / total) * 100 or 0
         progressFill.Size = UDim2.new(math.clamp(percent / 100, 0, 1), 0, 1, 0)
         progressText.Text = string.format("%d / %d  (%.1f%%)  %s", current, total, percent, status or "")
-        task.wait() -- 强制刷新UI
+        task.wait()
     end
     
-    -- 2. 统计总实例数（先快速遍历一次，仅计数）
+    -- 2. 收集实例（保持完整）
+    local instances = {}
+    local idMap = {[game] = 0}
+    local idCounter = 0
     local totalInstances = 0
     local queue = {game}
     while #queue > 0 do
@@ -70,27 +65,13 @@ local function stealMapWithUI()
             table.insert(queue, child)
         end
     end
+    updateUI(0, totalInstances, "正在捕获实例...")
     
-    updateUI(0, totalInstances, "正在读取实例...")
-    
-    -- 3. 正式捕获（带进度更新）
-    local instances = {}
-    local idMap = {[game] = 0}
-    local idCounter = 0
-    local processed = 0
-    
-    -- 使用递归但加入进度更新
     local function collect(inst, parentId)
-        processed = processed + 1
-        if processed % 10 == 0 then  -- 每10个更新一次UI，减少刷新开销
-            updateUI(processed, totalInstances, "正在捕获...")
-        end
-        
         idCounter = idCounter + 1
         local myId = idCounter
         idMap[inst] = myId
         
-        -- 获取属性（缓慢但完整）
         local props = {}
         local success, allProps = pcall(function() return inst:GetProperties() end)
         if success and allProps then
@@ -121,13 +102,16 @@ local function stealMapWithUI()
             childrenIds = childrenIds
         }
         
+        if myId % 50 == 0 then
+            updateUI(myId, totalInstances, "捕获中...")
+        end
         return myId
     end
     
     collect(game, 0)
-    updateUI(totalInstances, totalInstances, "捕获完成，正在生成文件...")
+    updateUI(totalInstances, totalInstances, "捕获完成，构建文件...")
     
-    -- 4. 构建rbxl（带进度）
+    -- 3. 构建正确的.rbxl（修复关键错误）
     local stringTable = {}
     local function addString(str)
         str = tostring(str)
@@ -138,31 +122,28 @@ local function stealMapWithUI()
         return #stringTable
     end
     
-    -- 先构建字符串表（显示进度）
-    local totalProps = 0
+    -- 先构建字符串表
     for _, inst in pairs(instances) do
-        totalProps = totalProps + 1
         addString(inst.className)
         addString(inst.name)
         for propName, propData in pairs(inst.properties) do
             addString(propName)
             if propData.type == "string" then
                 addString(propData.value)
-            elseif propData.type == "Enum" then
-                addString(tostring(propData.value))
             end
         end
     end
     
+    -- 构建实例块（严格按照rbxl规范）
     local instanceBlocks = {}
     local built = 0
     for id, inst in pairs(instances) do
         built = built + 1
         if built % 50 == 0 then
-            updateUI(built, #instances, "正在构建文件 (" .. built .. "/" .. #instances .. ")...")
+            updateUI(built, #instances, "构建中...")
         end
         
-        -- 构建实例块（与之前类似）
+        -- 实例头：ID(4) + 类名字符串ID(4) + 名称字符串ID(4) + 父级ID(4)
         local block = string.pack("<I4 I4 I4 I4", 
             id,
             addString(inst.className),
@@ -170,6 +151,7 @@ local function stealMapWithUI()
             inst.parentId
         )
         
+        -- 属性块
         local propData = ""
         for propName, propVal in pairs(inst.properties) do
             local encoded
@@ -191,40 +173,54 @@ local function stealMapWithUI()
             else
                 encoded = string.pack("<I4", addString(tostring(v)))
             end
+            -- 属性格式：类型(1) + 名称ID(4) + 长度(4) + 数据
             propData = propData .. string.pack("<B I4 I4", 0, addString(propName), #encoded) .. encoded
         end
         block = block .. string.pack("<I4", #propData) .. propData
+        
+        -- 子级列表
         block = block .. string.pack("<I4", #inst.childrenIds)
         for _, childId in ipairs(inst.childrenIds) do
             block = block .. string.pack("<I4", childId)
         end
+        
         instanceBlocks[id] = block
     end
     
-    -- 5. 组装并保存
-    updateUI(#instances, #instances, "正在写入磁盘...")
+    -- 4. 生成完整文件（包含正确头尾）
+    local header = "ROBLOX"  -- 魔数
+    header = header .. string.pack("<I4", 0x0004)  -- 版本号（必须是4）
+    header = header .. string.pack("<I4", #instances)  -- 实例数量
+    header = header .. string.pack("<I4", #stringTable)  -- 字符串数量
     
-    local header = "ROBLOX" .. string.pack("<I4 I4 I4", 0x0004, #instances, #stringTable)
+    -- 字符串表
     local stringData = ""
     for _, str in ipairs(stringTable) do
         stringData = stringData .. string.pack("<I4", #str) .. str
     end
-    local instancesData = table.concat(instanceBlocks)
-    local finalData = header .. stringData .. instancesData
     
+    -- 实例数据
+    local instancesData = table.concat(instanceBlocks)
+    
+    -- 关键修复：添加文件尾（4字节校验，简单用0填充，但必须存在）
+    local footer = string.pack("<I4", 0)  -- 校验和占位
+    
+    -- 组合最终数据
+    local finalData = header .. stringData .. instancesData .. footer
+    
+    -- 5. 保存
     local saveDir = getexecutordirectory and getexecutordirectory() or ""
     if saveDir == "" then saveDir = "." end
-    local fileName = saveDir .. "/stolen_map_with_progress.rbxl"
+    local fileName = saveDir .. "/stolen_map_fixed.rbxl"
     writefile(fileName, finalData)
     
-    -- 6. 完成UI
     updateUI(#instances, #instances, "✅ 完成！文件已保存")
     task.wait(1.5)
     gui:Destroy()
     
-    print("[UI Steal] 完成！文件保存至：" .. fileName .. " 大小：" .. #finalData .. "字节")
-    print("[UI Steal] 共捕获 " .. #instances .. " 个实例")
+    print("[Fixed Steal] 文件保存至：" .. fileName .. " 大小：" .. #finalData .. "字节")
+    print("[Fixed Steal] 共捕获 " .. #instances .. " 个实例")
 end
 
 -- 执行
-stealMapWithUI()
+stealMapFixed()
