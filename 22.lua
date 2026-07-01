@@ -1,6 +1,6 @@
--- 修复版：生成真正可打开的.rbxl文件（解决Invalid XML错误）
-local function stealMapFixed()
-    -- 1. UI进度（沿用之前的）
+-- 方案一：生成.rbxmx（XML格式，Studio完美支持）
+local function stealAsXML()
+    -- UI进度（沿用之前）
     local player = game:GetService("Players").LocalPlayer
     local gui = Instance.new("ScreenGui")
     gui.Name = "StealProgressUI"
@@ -17,7 +17,7 @@ local function stealMapFixed()
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, 0, 0, 30)
     title.Position = UDim2.new(0, 0, 0, 5)
-    title.Text = "正在盗取地图资源..."
+    title.Text = "正在导出XML地图..."
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextScaled = true
     title.BackgroundTransparency = 1
@@ -52,7 +52,70 @@ local function stealMapFixed()
         task.wait()
     end
     
-    -- 2. 收集实例（保持完整）
+    -- 构建XML字符串
+    local xmlParts = {}
+    xmlParts[#xmlParts+1] = [[<?xml version="1.0" encoding="UTF-8"?>
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+    <External>null</External>
+    <External>nil</External>
+    <Item class="DataModel" referent="0">
+        <Properties>
+            <string name="Name">Roblox</string>
+        </Properties>]]
+    
+    -- 递归生成XML节点（简化版）
+    local function generateXML(inst, depth)
+        local indent = string.rep("    ", depth)
+        local lines = {}
+        lines[#lines+1] = string.format('%s<Item class="%s" referent="%d">', indent, inst.ClassName, inst.id)
+        
+        -- 属性
+        for propName, propData in pairs(inst.properties) do
+            local val = propData.value
+            local t = propData.type
+            local tag
+            if t == "string" then
+                tag = "string"
+                val = tostring(val):gsub("&", "&amp;"):gsub("<", "&lt;")
+            elseif t == "number" then
+                tag = "float"
+            elseif t == "boolean" then
+                tag = "bool"
+                val = val and "true" or "false"
+            elseif t == "Color3" then
+                tag = "Color3"
+                val = string.format("%f,%f,%f", val.r, val.g, val.b)
+            elseif t == "Vector3" then
+                tag = "Vector3"
+                val = string.format("%f,%f,%f", val.x, val.y, val.z)
+            elseif t == "CFrame" then
+                tag = "CFrame"
+                local r00,r01,r02,r10,r11,r12,r20,r21,r22,px,py,pz = val:GetComponents()
+                val = string.format("%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", 
+                    r00,r01,r02,r10,r11,r12,r20,r21,r22,px,py,pz)
+            else
+                tag = "string"
+                val = tostring(val):gsub("&", "&amp;"):gsub("<", "&lt;")
+            end
+            lines[#lines+1] = string.format('%s    <%s name="%s">%s</%s>', indent, tag, propName, val, tag)
+        end
+        
+        -- 子级
+        for _, childId in ipairs(inst.childrenIds) do
+            local child = instances[childId]
+            if child then
+                local childLines = generateXML(child, depth + 1)
+                for _, line in ipairs(childLines) do
+                    lines[#lines+1] = line
+                end
+            end
+        end
+        
+        lines[#lines+1] = string.format('%s</Item>', indent)
+        return lines
+    end
+    
+    -- 先收集所有实例（同之前）
     local instances = {}
     local idMap = {[game] = 0}
     local idCounter = 0
@@ -65,7 +128,7 @@ local function stealMapFixed()
             table.insert(queue, child)
         end
     end
-    updateUI(0, totalInstances, "正在捕获实例...")
+    updateUI(0, totalInstances, "正在捕获...")
     
     local function collect(inst, parentId)
         idCounter = idCounter + 1
@@ -109,118 +172,31 @@ local function stealMapFixed()
     end
     
     collect(game, 0)
-    updateUI(totalInstances, totalInstances, "捕获完成，构建文件...")
+    updateUI(totalInstances, totalInstances, "捕获完成，生成XML...")
     
-    -- 3. 构建正确的.rbxl（修复关键错误）
-    local stringTable = {}
-    local function addString(str)
-        str = tostring(str)
-        for i, s in ipairs(stringTable) do
-            if s == str then return i end
-        end
-        table.insert(stringTable, str)
-        return #stringTable
+    -- 生成根节点（DataModel）
+    local rootLines = generateXML(instances[1], 1)
+    for _, line in ipairs(rootLines) do
+        xmlParts[#xmlParts+1] = line
     end
     
-    -- 先构建字符串表
-    for _, inst in pairs(instances) do
-        addString(inst.className)
-        addString(inst.name)
-        for propName, propData in pairs(inst.properties) do
-            addString(propName)
-            if propData.type == "string" then
-                addString(propData.value)
-            end
-        end
-    end
+    xmlParts[#xmlParts+1] = [[    </Item>
+</roblox>]]
     
-    -- 构建实例块（严格按照rbxl规范）
-    local instanceBlocks = {}
-    local built = 0
-    for id, inst in pairs(instances) do
-        built = built + 1
-        if built % 50 == 0 then
-            updateUI(built, #instances, "构建中...")
-        end
-        
-        -- 实例头：ID(4) + 类名字符串ID(4) + 名称字符串ID(4) + 父级ID(4)
-        local block = string.pack("<I4 I4 I4 I4", 
-            id,
-            addString(inst.className),
-            addString(inst.name),
-            inst.parentId
-        )
-        
-        -- 属性块
-        local propData = ""
-        for propName, propVal in pairs(inst.properties) do
-            local encoded
-            local t = propVal.type
-            local v = propVal.value
-            if t == "number" then
-                encoded = string.pack("<d", v)
-            elseif t == "string" then
-                encoded = string.pack("<I4", addString(v))
-            elseif t == "boolean" then
-                encoded = v and "\x01" or "\x00"
-            elseif t == "Color3" then
-                encoded = string.pack("<fff", v.r, v.g, v.b)
-            elseif t == "Vector3" then
-                encoded = string.pack("<fff", v.x, v.y, v.z)
-            elseif t == "CFrame" then
-                local r00,r01,r02,r10,r11,r12,r20,r21,r22,px,py,pz = v:GetComponents()
-                encoded = string.pack("<ffffffffffff", r00,r01,r02,r10,r11,r12,r20,r21,r22,px,py,pz)
-            else
-                encoded = string.pack("<I4", addString(tostring(v)))
-            end
-            -- 属性格式：类型(1) + 名称ID(4) + 长度(4) + 数据
-            propData = propData .. string.pack("<B I4 I4", 0, addString(propName), #encoded) .. encoded
-        end
-        block = block .. string.pack("<I4", #propData) .. propData
-        
-        -- 子级列表
-        block = block .. string.pack("<I4", #inst.childrenIds)
-        for _, childId in ipairs(inst.childrenIds) do
-            block = block .. string.pack("<I4", childId)
-        end
-        
-        instanceBlocks[id] = block
-    end
+    local xmlContent = table.concat(xmlParts, "\n")
     
-    -- 4. 生成完整文件（包含正确头尾）
-    local header = "ROBLOX"  -- 魔数
-    header = header .. string.pack("<I4", 0x0004)  -- 版本号（必须是4）
-    header = header .. string.pack("<I4", #instances)  -- 实例数量
-    header = header .. string.pack("<I4", #stringTable)  -- 字符串数量
-    
-    -- 字符串表
-    local stringData = ""
-    for _, str in ipairs(stringTable) do
-        stringData = stringData .. string.pack("<I4", #str) .. str
-    end
-    
-    -- 实例数据
-    local instancesData = table.concat(instanceBlocks)
-    
-    -- 关键修复：添加文件尾（4字节校验，简单用0填充，但必须存在）
-    local footer = string.pack("<I4", 0)  -- 校验和占位
-    
-    -- 组合最终数据
-    local finalData = header .. stringData .. instancesData .. footer
-    
-    -- 5. 保存
+    -- 保存为.rbxmx（XML格式）
     local saveDir = getexecutordirectory and getexecutordirectory() or ""
     if saveDir == "" then saveDir = "." end
-    local fileName = saveDir .. "/stolen_map_fixed.rbxl"
-    writefile(fileName, finalData)
+    local fileName = saveDir .. "/stolen_map.rbxmx"
+    writefile(fileName, xmlContent)
     
-    updateUI(#instances, #instances, "✅ 完成！文件已保存")
+    updateUI(#instances, #instances, "✅ 完成！文件已保存为.rbxmx")
     task.wait(1.5)
     gui:Destroy()
     
-    print("[Fixed Steal] 文件保存至：" .. fileName .. " 大小：" .. #finalData .. "字节")
-    print("[Fixed Steal] 共捕获 " .. #instances .. " 个实例")
+    print("[XML Steal] 文件保存至：" .. fileName)
+    print("[XML Steal] 请直接用Roblox Studio打开此文件（.rbxmx）")
 end
 
--- 执行
-stealMapFixed()
+stealAsXML()
