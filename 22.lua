@@ -1,202 +1,190 @@
--- 方案一：生成.rbxmx（XML格式，Studio完美支持）
-local function stealAsXML()
-    -- UI进度（沿用之前）
+-- 获取当前播放音乐ID并显示UI
+local function getMusicIDWithUI()
+    -- 1. 创建UI界面
     local player = game:GetService("Players").LocalPlayer
     local gui = Instance.new("ScreenGui")
-    gui.Name = "StealProgressUI"
+    gui.Name = "MusicIDDisplay"
     gui.Parent = player:WaitForChild("PlayerGui")
     
+    -- 背景框（半透明，可拖动）
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 400, 0, 120)
-    frame.Position = UDim2.new(0.5, -200, 0.5, -60)
-    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    frame.BackgroundTransparency = 0.2
-    frame.BorderSizePixel = 0
+    frame.Size = UDim2.new(0, 300, 0, 80)
+    frame.Position = UDim2.new(0.5, -150, 0.1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    frame.BackgroundTransparency = 0.3
+    frame.BorderSizePixel = 1
+    frame.BorderColor3 = Color3.fromRGB(100, 200, 255)
     frame.Parent = gui
     
+    -- 标题
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 30)
-    title.Position = UDim2.new(0, 0, 0, 5)
-    title.Text = "正在导出XML地图..."
+    title.Size = UDim2.new(1, 0, 0, 25)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.Text = "🎵 当前播放音乐 ID"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextScaled = true
     title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBold
     title.Parent = frame
     
-    local progressBg = Instance.new("Frame")
-    progressBg.Size = UDim2.new(0.9, 0, 0, 20)
-    progressBg.Position = UDim2.new(0.05, 0, 0, 40)
-    progressBg.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    progressBg.BorderSizePixel = 0
-    progressBg.Parent = frame
+    -- 音乐ID显示
+    local idLabel = Instance.new("TextLabel")
+    idLabel.Size = UDim2.new(1, 0, 0, 35)
+    idLabel.Position = UDim2.new(0, 0, 0, 30)
+    idLabel.Text = "未检测到音乐"
+    idLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+    idLabel.TextScaled = true
+    idLabel.BackgroundTransparency = 1
+    idLabel.Font = Enum.Font.Gotham
+    idLabel.Parent = frame
     
-    local progressFill = Instance.new("Frame")
-    progressFill.Size = UDim2.new(0, 0, 1, 0)
-    progressFill.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
-    progressFill.BorderSizePixel = 0
-    progressFill.Parent = progressBg
-    
-    local progressText = Instance.new("TextLabel")
-    progressText.Size = UDim2.new(1, 0, 0, 30)
-    progressText.Position = UDim2.new(0, 0, 0, 70)
-    progressText.Text = "0 / 0  (0%)"
-    progressText.TextColor3 = Color3.fromRGB(200, 200, 200)
-    progressText.TextScaled = true
-    progressText.BackgroundTransparency = 1
-    progressText.Parent = frame
-    
-    local function updateUI(current, total, status)
-        local percent = total > 0 and (current / total) * 100 or 0
-        progressFill.Size = UDim2.new(math.clamp(percent / 100, 0, 1), 0, 1, 0)
-        progressText.Text = string.format("%d / %d  (%.1f%%)  %s", current, total, percent, status or "")
-        task.wait()
-    end
-    
-    -- 构建XML字符串
-    local xmlParts = {}
-    xmlParts[#xmlParts+1] = [[<?xml version="1.0" encoding="UTF-8"?>
-<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
-    <External>null</External>
-    <External>nil</External>
-    <Item class="DataModel" referent="0">
-        <Properties>
-            <string name="Name">Roblox</string>
-        </Properties>]]
-    
-    -- 递归生成XML节点（简化版）
-    local function generateXML(inst, depth)
-        local indent = string.rep("    ", depth)
-        local lines = {}
-        lines[#lines+1] = string.format('%s<Item class="%s" referent="%d">', indent, inst.ClassName, inst.id)
-        
-        -- 属性
-        for propName, propData in pairs(inst.properties) do
-            local val = propData.value
-            local t = propData.type
-            local tag
-            if t == "string" then
-                tag = "string"
-                val = tostring(val):gsub("&", "&amp;"):gsub("<", "&lt;")
-            elseif t == "number" then
-                tag = "float"
-            elseif t == "boolean" then
-                tag = "bool"
-                val = val and "true" or "false"
-            elseif t == "Color3" then
-                tag = "Color3"
-                val = string.format("%f,%f,%f", val.r, val.g, val.b)
-            elseif t == "Vector3" then
-                tag = "Vector3"
-                val = string.format("%f,%f,%f", val.x, val.y, val.z)
-            elseif t == "CFrame" then
-                tag = "CFrame"
-                local r00,r01,r02,r10,r11,r12,r20,r21,r22,px,py,pz = val:GetComponents()
-                val = string.format("%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", 
-                    r00,r01,r02,r10,r11,r12,r20,r21,r22,px,py,pz)
-            else
-                tag = "string"
-                val = tostring(val):gsub("&", "&amp;"):gsub("<", "&lt;")
-            end
-            lines[#lines+1] = string.format('%s    <%s name="%s">%s</%s>', indent, tag, propName, val, tag)
+    -- 复制按钮
+    local copyBtn = Instance.new("TextButton")
+    copyBtn.Size = UDim2.new(0, 60, 0, 25)
+    copyBtn.Position = UDim2.new(1, -70, 1, -30)
+    copyBtn.Text = "复制"
+    copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    copyBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+    copyBtn.BorderSizePixel = 0
+    copyBtn.Parent = frame
+    copyBtn.MouseButton1Click:Connect(function()
+        if idLabel.Text ~= "未检测到音乐" and idLabel.Text ~= "" then
+            setclipboard(idLabel.Text)
+            copyBtn.Text = "✅ 已复制"
+            task.wait(1.5)
+            copyBtn.Text = "复制"
         end
-        
-        -- 子级
-        for _, childId in ipairs(inst.childrenIds) do
-            local child = instances[childId]
-            if child then
-                local childLines = generateXML(child, depth + 1)
-                for _, line in ipairs(childLines) do
-                    lines[#lines+1] = line
-                end
-            end
-        end
-        
-        lines[#lines+1] = string.format('%s</Item>', indent)
-        return lines
-    end
+    end)
     
-    -- 先收集所有实例（同之前）
-    local instances = {}
-    local idMap = {[game] = 0}
-    local idCounter = 0
-    local totalInstances = 0
-    local queue = {game}
-    while #queue > 0 do
-        local inst = table.remove(queue)
-        totalInstances = totalInstances + 1
-        for _, child in ipairs(inst:GetChildren()) do
-            table.insert(queue, child)
-        end
-    end
-    updateUI(0, totalInstances, "正在捕获...")
-    
-    local function collect(inst, parentId)
-        idCounter = idCounter + 1
-        local myId = idCounter
-        idMap[inst] = myId
-        
-        local props = {}
-        local success, allProps = pcall(function() return inst:GetProperties() end)
-        if success and allProps then
-            for _, propName in ipairs(allProps) do
-                local success2, val = pcall(function() return inst[propName] end)
-                if success2 and val ~= nil then
-                    local t = typeof(val)
-                    if t ~= "function" and t ~= "thread" and t ~= "userdata" then
-                        props[propName] = {type = t, value = val}
+    -- 2. 获取音乐ID的函数
+    local function getCurrentMusicID()
+        -- 方法1：从SoundService中查找正在播放的音频
+        local soundService = game:GetService("SoundService")
+        local sounds = soundService:GetDescendants()
+        for _, obj in ipairs(sounds) do
+            if obj:IsA("Sound") or obj:IsA("SoundGroup") then
+                -- 检查是否有播放中的音频
+                local success, isPlaying = pcall(function()
+                    return obj.IsPlaying and obj.IsPlaying == true
+                end)
+                if success and isPlaying and obj.SoundId and obj.SoundId ~= "" then
+                    local id = obj.SoundId
+                    -- 提取纯数字ID（格式通常为 rbxlasset://1234567890 或 https://www.roblox.com/asset/?id=1234567890）
+                    local numericId = id:match("(%d+)")
+                    if numericId then
+                        return numericId, id
+                    else
+                        return id, id
                     end
                 end
             end
         end
         
-        local childrenIds = {}
-        local children = inst:GetChildren()
-        for _, child in ipairs(children) do
-            local childId = collect(child, myId)
-            table.insert(childrenIds, childId)
+        -- 方法2：从工作区中查找播放中的音频
+        local workspaceSounds = workspace:GetDescendants()
+        for _, obj in ipairs(workspaceSounds) do
+            if obj:IsA("Sound") then
+                local success, isPlaying = pcall(function()
+                    return obj.IsPlaying and obj.IsPlaying == true
+                end)
+                if success and isPlaying and obj.SoundId and obj.SoundId ~= "" then
+                    local numericId = obj.SoundId:match("(%d+)")
+                    if numericId then
+                        return numericId, obj.SoundId
+                    else
+                        return obj.SoundId, obj.SoundId
+                    end
+                end
+            end
         end
         
-        instances[myId] = {
-            id = myId,
-            className = inst.ClassName,
-            name = inst.Name,
-            parentId = parentId,
-            properties = props,
-            childrenIds = childrenIds
-        }
-        
-        if myId % 50 == 0 then
-            updateUI(myId, totalInstances, "捕获中...")
+        -- 方法3：从玩家角色或工具中查找
+        local char = player.Character
+        if char then
+            local charSounds = char:GetDescendants()
+            for _, obj in ipairs(charSounds) do
+                if obj:IsA("Sound") then
+                    local success, isPlaying = pcall(function()
+                        return obj.IsPlaying and obj.IsPlaying == true
+                    end)
+                    if success and isPlaying and obj.SoundId and obj.SoundId ~= "" then
+                        local numericId = obj.SoundId:match("(%d+)")
+                        if numericId then
+                            return numericId, obj.SoundId
+                        else
+                            return obj.SoundId, obj.SoundId
+                        end
+                    end
+                end
+            end
         end
-        return myId
+        
+        return nil, nil
     end
     
-    collect(game, 0)
-    updateUI(totalInstances, totalInstances, "捕获完成，生成XML...")
-    
-    -- 生成根节点（DataModel）
-    local rootLines = generateXML(instances[1], 1)
-    for _, line in ipairs(rootLines) do
-        xmlParts[#xmlParts+1] = line
+    -- 3. 实时更新UI
+    local function updateDisplay()
+        local id, fullId = getCurrentMusicID()
+        if id then
+            idLabel.Text = "🎵 " .. id
+            -- 鼠标悬停显示完整链接
+            idLabel.ToolTip = fullId or id
+        else
+            idLabel.Text = "🔇 未检测到音乐"
+            idLabel.ToolTip = ""
+        end
     end
     
-    xmlParts[#xmlParts+1] = [[    </Item>
-</roblox>]]
+    -- 4. 定时刷新（每0.5秒检查一次）
+    updateDisplay()
+    local connection = game:GetService("RunService").Heartbeat:Connect(function()
+        updateDisplay()
+    end)
     
-    local xmlContent = table.concat(xmlParts, "\n")
+    -- 5. 关闭按钮（右上角）
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 25, 0, 25)
+    closeBtn.Position = UDim2.new(1, -30, 0, 0)
+    closeBtn.Text = "✕"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Parent = frame
+    closeBtn.MouseButton1Click:Connect(function()
+        connection:Disconnect()
+        gui:Destroy()
+        print("[MusicID] UI已关闭")
+    end)
     
-    -- 保存为.rbxmx（XML格式）
-    local saveDir = getexecutordirectory and getexecutordirectory() or ""
-    if saveDir == "" then saveDir = "." end
-    local fileName = saveDir .. "/stolen_map.rbxmx"
-    writefile(fileName, xmlContent)
+    -- 6. 拖动功能
+    local dragging = false
+    local dragStartPos, dragStartMouse
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStartPos = frame.Position
+            dragStartMouse = input.Position
+        end
+    end)
+    frame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStartMouse
+            frame.Position = UDim2.new(
+                dragStartPos.X.Scale + delta.X / 1000,
+                dragStartPos.X.Offset + delta.X,
+                dragStartPos.Y.Scale + delta.Y / 1000,
+                dragStartPos.Y.Offset + delta.Y
+            )
+        end
+    end)
     
-    updateUI(#instances, #instances, "✅ 完成！文件已保存为.rbxmx")
-    task.wait(1.5)
-    gui:Destroy()
-    
-    print("[XML Steal] 文件保存至：" .. fileName)
-    print("[XML Steal] 请直接用Roblox Studio打开此文件（.rbxmx）")
+    print("[MusicID] UI已启动，正在监听音乐播放...")
 end
 
-stealAsXML()
+-- 执行
+getMusicIDWithUI()
